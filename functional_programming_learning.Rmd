@@ -19,6 +19,48 @@ editor_options:
 # Library
 ```{r}
 library(tidyverse)
-library(flextable)
-library(officer)
+install.packages("palmerpenguins")
+library(palmerpenguins)
+
+
 ```
+
+# attributes
+```{r}
+attributes(penguins[1:20, ])
+
+attr(penguins, "class")
+attr(penguins, "names")
+
+attributes(penguins$year)
+```
+
+# dimensions
+```{r}
+m <- matrix(1:6, ncol = 2)
+m
+attributes(m)
+
+# modify the attributes
+attr(m, "dim") <- c(2, 3)
+
+# create an atomic vector
+v <- 1:6
+
+# assign a dimension attribute
+attr(v, "dim") <- c(3, 2)
+
+dim_names <- list(
+  c("the first", "second", "III"),
+  c("index", "value")
+)
+
+attr(v, "dimnames") <- dim_names
+
+attributes(v)
+rownames(v) <- c("the first", "second", "III")
+colnames(v) <- c("index", "value")
+
+attr(v, "matrix_mean") <- mean(v)
+```
+
