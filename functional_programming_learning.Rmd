@@ -64,3 +64,188 @@ colnames(v) <- c("index", "value")
 attr(v, "matrix_mean") <- mean(v)
 ```
 
+# A function that uses attributes
+```{r}
+db <- list(
+  data.frame(
+    color = c("red", "orange", "green"),
+    transparency = c(0.8, 0.65, 0.93)
+  ),
+  data.frame(
+    color = c("blue", "pink", "cyan"),
+    transparency = c(0.40, 0.35, 0.87)
+  )
+)
+
+# write a function to grab table; if it's 1920, grab the first one, otherwise grab the second one
+pull_color_data <- function(year){
+  to_pull <- if(year == "1920"){
+    out <- db[[1]]
+  }else{
+    out <- db[[2]]
+  }
+  out
+}
+
+pull_color_data(1921)
+pull_color_data(1920)
+
+# modify the function to store the year as an attribute
+pull_color_data <- function(year){
+  to_pull <- if(year == "1920"){
+    out <- db[[1]]
+  }else{
+    out <- db[[2]]
+  }
+  attributes(out) <- c(
+    attributes(out),
+    db = year
+  )
+  out
+}
+
+pull_color_data(1920)
+attributes(pull_color_data(1920))
+attr(pull_color_data(2021), "db")
+
+library(colorspace)
+print_colors <- function(color_data){
+  title <- paste0("Colors for ", attr(color_data, "db"))
+  colorspace::swatchplot(color_data$color)
+  mtext(title)
+}
+
+pull_color_data(2021) |> 
+  print_colors()
+```
+
+# Another example of attributes
+```{r}
+library(lme4)
+# fit a multilevel model and pull the variance-covariance matrix
+m <- lmer(Reaction ~ 1 + Days + (1 + Days|Subject),
+          data = sleepstudy)
+
+VarCorr(m)$Subject
+```
+
+# Matrices
+```{r}
+set.seed(42)
+m <- matrix(rnorm(100, 200, 10), ncol = 10)
+sum(m)
+m
+rowSums(m)
+colSums(m)
+
+# standardize the matrix
+z <- (m - mean(m))/sd(m)
+
+
+```
+
+# names
+```{r}
+names(v) <- letters[1:6]
+
+v3a <- c(a = 5, b = 7, c = 12)
+v3a
+typeof(v3a)
+class(v3a)
+names(v3a)
+attributes(v3a)
+
+v["b"]
+v["d"]
+```
+
+# factors
+```{r}
+fct <- factor(c("a", "a", "b", "c"))
+typeof(fct)
+attributes(fct)
+str(fct)
+
+
+# create integer vector
+int <- c(1L, 1L, 2L, 3L, 1L, 3L)
+# assign some levels
+attr(int, "levels") <- c("red", "green", "blue")
+# change the class to a factor
+class(int) <- "factor"
+
+age <- factor(sample(c("baby", 1:10), 100, replace = TRUE))
+age
+typeof(age)
+class(age)
+str(age)
+
+data.frame(age) |> 
+  count(age)
+```  
+
+# Classes
+```{r}
+summary(mtcars)
+summary(gss_cat$marital)
+summary(lm(mpg ~ cyl, mtcars))
+
+summary.data.frame(mtcars)
+```
+
+# lists
+```{r}
+l <- list(
+  c("a", "b", "c"),
+  rnorm(5),
+  c(7L, 2L),
+  c(TRUE, TRUE, FALSE, TRUE)
+)
+
+typeof(l)
+attributes(l)
+str(l)
+
+l_df <- list(
+  a = c("red", "blue"),
+  b = rnorm(2),
+  c = c(7L, 2L),
+  d = c(TRUE, FALSE)
+)
+data.frame(l_df)
+```
+
+```{r}
+x <- c(a = 3, b = 5, c = 7)
+
+l <- list(
+  x = x,
+  x2 = c(x, x),
+  x3 = list(
+    vect = x,
+    squared = x^2,
+    cubed = x^3)
+)
+
+# subsetting lists
+l[1]
+typeof(l[1])
+
+l[[1]]
+typeof(l[[1]])
+l[[1]]["c"]
+
+# named list
+l$x2
+l$x3$squared["a"]
+
+l[c(TRUE, FALSE, TRUE)]
+l[c(1, 3)]
+
+mtcars[, 4, drop = FALSE]
+mtcars_tbl <- as_tibble(mtcars)
+mtcars_tbl[, 4]
+
+
+```
+
