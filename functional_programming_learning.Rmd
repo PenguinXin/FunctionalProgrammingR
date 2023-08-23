@@ -249,3 +249,262 @@ mtcars_tbl[, 4]
 
 ```
 
+# for loops
+```{r}
+a <- letters[1:26]
+
+for (i in 1:5){
+  print(a[i])
+}
+
+# simulate tossing a coin multiple times
+# pre-allocate a vector
+result <- rep(NA, 10)
+result
+# run the trial n times, storing the result in your pre-allocated vector
+for (i in seq_along(result)){
+  result[i] <- sample(c("Heads", "Tails"), 1)
+}
+result
+
+# create a alphabet of upper/lower case
+result <- rep(NA, length(letters))
+
+for (i in seq_along(result)){
+  result[i] <- paste0(LETTERS[i], letters[i])
+}
+result
+
+# simulate 100 cases from random normal distribution,
+# where we varied the standard deviation in increments of 0.2, ranging from 1 to 5
+increments <- seq(1, 5, by = 0.2)
+# allocate a vector; do it in a list
+simulated <- vector("list", length(increments))
+
+for (i in seq_along(simulated)){
+  simulated[[i]] <- rnorm(100, 0, increments[i])
+}
+
+# provide meaningful names
+names(simulated) <- paste0("sd_", increments)
+str(simulated)
+
+# convert to df
+sim_d <- data.frame(simulated)
+
+# plot
+pd <- sim_d |> 
+  pivot_longer(
+    everything(),
+    names_to = "sd",
+    values_to = "sim",
+    names_prefix = "sd_",
+    names_ptypes = list(sd = factor())# change the type of sd
+  )
+pd |> 
+  ggplot(aes(sim)) +
+  geom_density(aes(color = sd)) +
+  guides(color = "none")
+
+# calculate all the densities
+densities <- vector("list", length(sim_d))
+
+for (i in seq_along(densities)){
+  densities[[i]] <- density(sim_d[, 1])
+}
+str(densities)
+
+# plot the first density
+plot(densities[[1]])
+
+# loop through all the other densities
+plot(densities[[1]], xlim = c(-20, 20))
+
+for (i in seq(2, length(densities))){
+  lines(x = densities[[i]]$x,
+        y = densities[[i]]$y)
+}
+
+# breaking loops
+set.seed(1)
+
+rand_unif <- vector("double", 10)
+
+for (i in seq_along(rand_unif)) {
+  rand_unif[i] <- runif(1, 0, 10)
+  if(any(rand_unif > 5)){
+    break
+  }
+}
+```
+
+# lapply 
+```{r}
+# the for loop version
+increments <- seq(1, 5, by = 0.2)
+# allocate a vector; do it in a list
+simulated <- vector("list", length(increments))
+
+for (i in seq_along(simulated)){
+  simulated[[i]] <- rnorm(10, 0, increments[i])
+}
+simulated
+
+# the lapply version
+increments <- seq(1, 5, by = 0.2)
+sim_l <- lapply(increments, function(sd) rnorm(10, 0, sd))
+sim_l
+
+# loop through a data frame because a data frame is a list
+lapply(palmerpenguins::penguins, is.double)
+lapply(mtcars, mean)
+
+# add a condition
+lapply(penguins, function(x){
+  if(is.numeric(x)){
+    mean(x, na.rm = TRUE)
+  }
+})
+
+# add a second condition
+lapply(penguins, function(x){
+  if(is.numeric(x)){
+    return(mean(x, na.rm = TRUE))
+  }else if(is.character(x) | is.factor(x)){
+    return(table(x))
+  }
+})
+
+# passing arguments
+lapply(airquality, mean, na.rm = TRUE)
+
+lapply(seq(1, 5, 0.2), rnorm, n = 10, mean = 0)
+```
+
+# operations by group
+```{r}
+
+# replicate group_by
+by_cyl <- split(mtcars, mtcars$cyl)
+# by_cyl is a list of data frames
+lapply(by_cyl, function(x) mean(x$mpg))
+
+# another example
+by_species <- split(penguins, penguins$species)
+lapply(by_species, function(x) mean(x$bill_length_mm, na.rm = TRUE))
+```
+
+# produce separate plots
+```{r}
+lapply(by_cyl, function(x){
+  ggplot(x, aes(disp, mpg)) +
+    geom_point() +
+    geom_smooth()
+})
+
+lapply(by_species, function(x){
+  ggplot(x, aes(bill_length_mm, body_mass_g)) +
+    geom_point() +
+    geom_smooth()
+})
+
+# save plots to an object
+penguin_plots <- lapply(by_species, function(x){
+  ggplot(x, aes(bill_length_mm, body_mass_g)) +
+    geom_point() +
+    geom_smooth()
+})
+
+str(penguin_plots) # this is a list
+
+# save file names/directory
+install.packages("here")
+library(here)
+
+library(fs)
+# create a plots folder and a penguins folder inside the plots folder
+dir_create(here("plots", "penguins"))
+names(penguin_plots)
+files <- paste0(names(penguin_plots), ".pdf")
+file_paths <- here("plots", "penguins", files)
+
+# write a for loop to save these plots
+for (plot in seq_along(file_paths)){
+  ggsave(file_paths[plot], # single bracket
+         penguin_plots[[plot]], # double bracket
+         width = 6.5,
+         height = 8)
+}
+```
+
+```{r}
+# create a plot of bill length vs. bill depth for each combination of species and island
+split2 <- split(penguins, list(penguins$species, penguins$island))
+str(split2)
+
+plots2 <- lapply(split2, function(x){
+  ggplot(x, aes(bill_length_mm, bill_depth_mm)) +
+    geom_point()
+})
+
+# get rid of empty plots
+
+# check if n row > 0
+keep <- sapply(split2, function(x) nrow(x) > 0)
+# use this to subset the list
+split3 <- split2[keep]
+plots3 <- lapply(split3, function(x){
+  ggplot(x, aes(bill_length_mm, bill_depth_mm)) +
+    geom_point()
+})
+
+# OR 
+sapply(split2, nrow)
+sapply(split2, function(x){
+  if(nrow(x) != 0){
+    ggplot(x, aes(bill_length_mm, bill_depth_mm)) +
+    geom_point()
+  }
+})
+
+```
+
+# sapply
+```{r}
+!sapply(penguins, is.double)
+
+penguins[, !sapply(penguins, is.double)]
+
+```
+
+# vapply
+```{r}
+vapply(mtcars, mean, FUN.VALUE = double(1))
+vapply(mtcars, is.double, FUN.VALUE = logical(1))
+
+# count missing data
+vapply(airquality, function(col){
+  sum(is.na(col))
+  },
+  FUN.VALUE = double(1))
+```
+
+# apply
+apply(x, dimension, function, function_args)
+x: the thing to loop over (usually a matrix or data frame)
+dimension: 1 = loop over each row; 2 = loop over each column; n = apply to nth dimension of an array (rare)
+
+```{r}
+people <- data.frame(
+  first = c("Frederick", "Anna", "Julia"),
+  last = c("Douglass", "Murray", "Griffiths")
+)
+people
+
+# want a new column that was the first and last name
+apply(people, 1, paste, collapse = " ")
+
+people |> 
+  mutate(full_name = apply(people, 1, paste, collapse = " "))
+```
+
