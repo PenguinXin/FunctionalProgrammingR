@@ -656,5 +656,45 @@ df_list <- list(
   data.frame(var1 = 1)
 )
 
+# calculate the mean
+map(df_list, function(x) mean(x$var1))
+map(df_list, ~ mean(.x$var1))
+map(df_list, ~ mean(.x[["var1"]]))
+
+# return a vector
+map_dbl(df_list, ~ mean(.x$var1))
+```
+
+# another example
+```{r}
+# fit a simple model to each year
+# the relationship between personal consumption expenditures (pce) and unemployment percentage over time?
+econ <- economics |> 
+  mutate(year = year(date))
+
+# split by year
+by_year <- split(econ, econ$year)
+
+unemploy <- map(by_year, ~ .x |> mutate(unemploy_pct = (unemploy / pop) * 100))
+
+# fit the model
+lm_model <- map(unemploy, ~ lm(unemploy_pct ~ pce, data = .x))
+
+# extract the coefficient
+
+coef_df <- map(lm_model, ~ coef(.x))
+coefs <- map(lm_model, coef)
+
+# extract the slope
+coefs[[1]][2]
+
+slopes <- map_dbl(coefs, 2)
+
+# put all together by piping
+by_year |> 
+  map(~ mutate(.x, percent = unemploy / pop)) |> 
+  map(~ lm(percent ~ pce, data = .x)) |> 
+  map(coef) |> 
+  map_dbl(2)
 ```
 
