@@ -505,6 +505,156 @@ people
 apply(people, 1, paste, collapse = " ")
 
 people |> 
-  mutate(full_name = apply(people, 1, paste, collapse = " "))
+  mutate(full_name = apply(people, 1, paste, collapse =))
+```
+
+# example
+```{r}
+# example: calculate top mpg manufactures
+four_cyl <- filter(mpg, cyl == 4)
+
+ninety <- four_cyl %>%
+    filter(cty >= quantile(cty, probs = 0.9)) # get the 90%tile
+ninety
+count_mfr <- count(ninety, manufacturer)
+count_model <- count(ninety, manufacturer, model)
+count_class <- count(ninety, class)
+
+# produce a plot for each
+plot_mfr <- count_mfr |> 
+  ggplot(aes(fct_reorder(manufacturer, -n), n)) +
+  geom_col(aes(fill = manufacturer)) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(title = "Manufacturers", x = "", y = "") +
+  guides(fill = "none")
+
+plot_car <- count_model %>%
+    unite(car, manufacturer, model, sep = " ") %>%
+    ggplot(aes(fct_reorder(car, -n), n)) +
+        geom_col(aes(fill = car)) +
+        scale_fill_brewer(palette = "Set3") +
+        labs(title = "Top 10% of city mpg",
+             subtitle = "Car frequency",
+             x = "",
+             y = "") +
+        guides(fill = "none")
+
+plot_class <- 
+  ggplot(count_class, aes(fct_reorder(class, -n), n)) +
+        geom_col(aes(fill = class)) +
+        scale_fill_brewer(palette = "Set3") +
+        labs(title = "Car Class",
+             x = "", 
+             y = "") +
+        guides(fill = "none")
+
+# Assemble the plots
+library(patchwork)
+plot_car / (plot_mfr + plot_class)
+
+# functional programming version
+
+by_cyl <- split(mpg, mpg$cyl)
+top_10 <- lapply(by_cyl, function(x){
+  filter(x, cty > quantile(cty, probs = 0.9))
+})
+top_10
+str(top_10)
+# keep <- vapply(top_10, function(x) nrow(x) > 0, FUN.VALUE = logical(1))
+# top_10_new <- top_10[keep]
+
+# all counts
+counts <- lapply(top_10, function(x){
+  count_manufacturer <- count(x, manufacturer)
+  count_class <- count(x, class)
+  count_model <- count(x, manufacturer, model) |> 
+    unite(car, manufacturer, model, sep = " ")
+  
+  return(list(mfr = count_manufacturer,
+              car = count_model,
+              class = count_class))
+})
+names(counts[[1]])[1]
+# write the plot function
+counts_plot <- function(counts_df){
+  var <- names(counts_df)[1]
+  
+  p <- ggplot(counts_df, aes(fct_reorder(!!sym(var), -n), n)) +
+    geom_col(aes(fill = !!sym(var))) +
+    scale_fill_brewer(palette = "Set3") +
+    labs(title = str_to_title(var),
+         x = "",
+         y = "") +
+    guides(fill = "none")
+  
+  if (var == "car") {
+    p <- p + labs(title = "Top 10% of city mpg", subtitle = var)
+  }
+  p
+}
+
+counts_plot(counts[["6"]]$car)
+
+# compile plots function
+full_plot <- function(l){
+  counts_plot(l[["car"]]) / (
+    counts_plot(l[["mfr"]]) +
+      counts_plot(l[["class"]])
+  )
+}
+
+full_plot(counts[[1]])
+
+# finish
+plots <- lapply(counts, full_plot)
+```
+
+# purrr
+```{r}
+map(1:3, rnorm)
+lapply(1:3, rnorm)
+
+map(mtcars, function(x) length(unique(x)))
+lapply(mtcars, function(x) length(unique(x)))
+
+map(mtcars, ~ length(unique(.x))) # ~ is used in place of function(.x)
+
+# vary the n
+map(1:3, ~ rnorm(n = .x))
+
+# vary the mean
+map(1:3, ~ rnorm(n = 1, mean = .x))
+
+# vary the sd
+map(1:3, ~ rnorm(n = 1, sd = .x))
+
+# use map to extract elements from list
+l <- list(
+  list(-1, x = 1, y = 2, z = "a"),
+  list(-2, x = 4, y = c(5, 6), z = "b"),
+  list(-3, x = 8, y = c(9, 10, 11))
+)
+
+map(l, 2)
+lapply(l, function(x) x[[2]])
+lapply(l, `[[`, 2)
+
+# extract by name
+map(l, "y")
+# extract the first element of y
+map(l, list("y", 1))
+
+# variants of map
+map_dbl(l, "x")
+map_chr(l, "z", .default = NA_character_)
+```
+
+```{r}
+df_list <- list(
+  data.frame(var1 = 1:5),
+  data.frame(var1 = 1:3),
+  data.frame(var1 = 1)
+)
+
 ```
 
