@@ -698,3 +698,87 @@ by_year |>
   map_dbl(2)
 ```
 
+# lab 1
+```{r}
+set.seed(123) # Set random number generation
+
+m <- lm(mpg ~ hp + cyl + drat, mtcars)
+
+l <- list(a = list(m = matrix(1:12, ncol = 3),
+              	   v = 1:7),
+          b = data.frame(student = 1:15,
+                         score = rnorm(15, 100, 10)))
+```
+
+```{r}
+# extract the qr tolerance
+m$qr$tol
+View(m)
+# extract the term labels from the model
+str(m)
+attr(m$terms, "term.labels")
+
+attr(attr(m$model, "terms"), "term.labels")
+
+# from l
+## Use at least two different methods to extract m.
+l$a$m
+l[["a"]][["m"]]
+## Extract the third column of m. Maintain the dimensions (matrix structure).
+l$a$m[, 3, drop = FALSE]
+## Extract the score for student 7 in the data frame.
+l$b[l$b$student == 7, ]
+l$b[7, ]
+```
+
+```{r}
+ins <- read.csv("insurance_coverage.csv")
+head(ins)
+
+# Split the data file by "age_bucket" and "sex_name"
+by_age_sex <- split(ins, list(ins$age_bucket, ins$sex_name))
+str(by_age_sex)
+
+# Use a for loop to calculate the mean health care population (hc_pop) for each "age_bucket"/"sex_name" combination.
+hc_pop_mean_list <- rep(NA, length(by_age_sex))
+for (i in seq_along(by_age_sex)){
+  hc_pop_mean_list[i] <- mean(by_age_sex[[i]]$hc_pop, na.rm = TRUE)
+}
+
+# Replicate this calculation with lapply, sapply, and vapply 
+lapply(by_age_sex, function(x) mean(x$hc_pop, na.rm = TRUE))
+sapply(by_age_sex, function(x) mean(x$hc_pop, na.rm = TRUE))
+vapply(by_age_sex, function(x) mean(x$hc_pop, na.rm = TRUE), FUN.VALUE = double(1))
+
+# Produce separate plots showing the change in hc_pop from 2014 to 2015 for each "age_bucket"/"sex_name" combination (with a single loop). Set the hc_pop axis so the limits equal the overall minimum and maximum values for hc_pop.
+ 
+
+ins_plots <- lapply(by_age_sex, function(x){
+  ggplot(x, aes(x = factor(year), y = hc_pop, group = 1)) +
+    geom_point() +
+    geom_line() +
+    scale_y_continuous(limits = c(min(ins$hc_pop), max(ins$hc_pop)))
+})
+
+# Use a for loop to save the plots to a folder on your computer
+# save file names/directory
+install.packages("here")
+library(here)
+
+library(fs)
+# create a plots folder and a penguins folder inside the plots folder
+dir_create(here("plots", "insurance_coverate"))
+names(ins_plots)
+files <- paste0(names(ins_plots), ".pdf")
+file_paths <- here("plots", "insurance_coverate", files)
+
+
+# write a for loop to save these plots
+for (plot in seq_along(file_paths)){
+  ggsave(file_paths[plot], # single bracket
+         ins_plots[[plot]], # double bracket
+         width = 6.5,
+         height = 8)
+}
+```
+
