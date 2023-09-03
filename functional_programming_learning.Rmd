@@ -782,3 +782,267 @@ for (plot in seq_along(file_paths)){
 }
 ```
 
+# map_dfr
+```{r}
+# create a function that simulates data
+set.seed(8765309)
+simulate <- function(n, mean = 0, sd = 1) {
+  tibble(sample_id = seq_len(n),
+         sample = rnorm(n, mean, sd))
+}
+
+simulate(10)
+simulate(4, mean = -10, sd = 1.5)
+
+# if we want to vary the sample size from 10 to 150 by increments of 5
+# mean stays constant at 100, sd is constant at 10
+
+sims <- map(seq(10, 150, 5), simulate, mean = 100, sd = 10)
+sims_df <- map_dfr(seq(10, 150, 5), simulate, mean = 100, sd = 10,
+                   .id = "iteration")
+
+sims_df[1:15,]
+
+sample_size <- seq(10, 150, 5)
+install.packages("english")
+library(english)
+
+sample_size <- setNames(sample_size, english::english(seq(10, 150, 5)))
+sample_size
+
+sims_df3 <- map_dfr(sample_size, simulate, mean = 100, sd = 10,
+                    .id = "n")
+
+# broom
+lm(tvhours ~ age, gss_cat) |> 
+  broom::tidy()
+
+split(gss_cat, gss_cat$year) |> 
+  map_dfr(~lm(tvhours ~ age, .x) |> 
+            tidy(),
+          .id = "year")
+```
+
+# batch-loading data
+useful when you have data separated by some categories
+```{r}
+library(fs) # file system package
+dir_ls(here::here("data"))
+
+# we only want .csv
+dir_ls(here("data"), glob = "*.csv")
+
+# loop through the directories and read in the csv files
+files <- dir_ls(
+  here("data"),
+  glob = "*.csv"
+)
+
+batch <- map_dfr(files, read_csv, .id = fi)
+
+batch2 <- map_dfr(files, read_csv, .id = "file")
+
+# remove the here::here patch from string
+batch2 <- batch2 |> 
+  mutate(file = str_replace_all(
+    file, here::here("data"), ""
+  ))
+
+# use regular expressions to pull out pieces you need
+batch2 |> 
+  count(file)
+
+## pull grade; but some file names have 2 digits after g, some have 1 digit
+## then pull year
+# then pull content area
+d <- batch2 |> 
+  # use () to specify what thing to pull out
+  mutate(
+  grade = str_replace_all(
+    file,
+    "/g(\\d?\\d).+",
+    "\\1"
+  ),
+  grade = as.integer(grade),
+  
+  year = str_replace_all(
+    file,
+    ".+files(\\d\\d)_sim.+",
+    "\\1"
+  ),
+  year = as.integer(year),
+  
+  content = str_replace_all(
+    file,
+    "/g\\d?\\d(.+)pfiles.+",
+    "\\1"
+  )
+  ) |> 
+  select(-file) |> 
+  select(ssid, grade, year, content, testeventid, 
+      asmtprmrydsbltycd, asmtscndrydsbltycd, Entry:WMLE)
+
+d |> 
+  count(content)
+
+```
+
+```{r}
+# what if we want only math files
+# we can't use glob because that's only for extension
+dir_ls(here::here("data"), regexp = "Math") # use regexp to pass a pattern you want to search for
+
+# read in only the grade 5 data
+file_g5 <- dir_ls(here::here("data"), regexp = "g5")
+
+g5_df <- map_dfr(file_g5, read_csv, id = "file")
+
+# base equivalents for ls
+list.files(here("data"))
+list.files(here("data"), full.names = TRUE, pattern = "*.csv")
+
+# fs package plays nicer with purrr
+```
+
+# list column
+```{r}
+# want to compare three models
+d <- d |> 
+  mutate(primary = as.factor(asmtprmrydsbltycd),
+         secondary = as.factor(asmtscndrydsbltycd))
+
+# create a data frame with a list column
+by_content <- d |> 
+  group_by(content) |> 
+  nest()
+
+map_dbl(by_content$data, nrow)
+map_dbl(by_content$data, ncol)
+map_dbl(by_content$data, ~ mean(.x$Theta))
+
+by_content |> 
+  mutate(n = map_dbl(data, nrow))
+
+# fit a model
+a <- by_content |> 
+  mutate(m1 = map(data, ~ lm(Theta ~ primary, data = .x)),
+         coefs = map(m1, coef))
+
+by_content |> 
+  mutate(m1 = map(data, ~ lm(Theta ~ primary, data = .x)),
+         coefs = map(m1, coef),
+         tidy_coefs = map(coefs, tidy)) |> 
+  unnest(tidy_coefs) |> 
+  filter(names %in% c("(Intercept)", "primary74")) |> 
+  select(content, names, x) |> 
+  pivot_wider(
+    values_from = x,
+    names_from = names
+  ) |> 
+  mutate(TBI = primary74 + `(Intercept)`) |> 
+  select(content, intercept = 2, TBI)
+
+# OR
+by_content |> 
+  mutate(m1 = map(data, ~ lm(Theta ~ primary, data = .x)),
+         coefs = map(m1, coef),
+         no_disab = map_dbl(coefs, 1),
+         tbi = no_disab + map_dbl(coefs, "primary74")) |> 
+  select(content, no_disab, tbi)
+
+# fit all three models
+mods <- by_content |> 
+  mutate(
+    m1 = map(data, ~ lm(Theta ~ primary, data = .x)),
+    m2 = map(data, ~ lm(Theta ~ primary + secondary, data = .x)),
+    m3 = map(data, ~ lm(Theta ~ primary * secondary, data = .x)))
+
+# pull the p value for the model comparison
+mods |> 
+  mutate(comp12 = map2(m1, m2, anova),
+         p12 = map_dbl(comp12, list("Pr(>F)", 2)))
+
+a <- mods |> 
+  mutate(comp12 = map2(m1, m2, anova))
+a$comp12[[1]]$`Pr(>F)`[2]
+a$comp12[[1]][["Pr(>F)"]][2]
+# write a function that pull the p-value from model comparison objects
+extract_p <- function(anova_ob) {
+  anova_ob[["Pr(>F)"]][2]
+}
+
+mods |> 
+  mutate(comp12 = map2(m1, m2, anova),
+         p12 = map_dbl(comp12, extract_p))
+
+# create a function using compose()
+center <- compose(~ .x - mean(.x, na.rm = TRUE))
+
+penguins$bill_length_mm |> 
+  center()
+
+# compose a p-val extractor
+p <- compose(~ .x[["Pr(>F)"]][2])
+mods |> 
+  mutate(comp12 = map2(m1, m2, anova),
+         p12 = map_dbl(comp12, p))
+```
+
+```{r}
+# operations by row
+df <- tibble(
+  name = c("Me", "You"),
+  x = 1:2,
+  y = 3:4,
+  z = 5:6
+)
+
+df |> 
+  mutate(m = mean(c(x, y, z)))
+
+df |> 
+  rowwise() |> 
+  mutate(m = mean(c(x, y, z)))
+
+# if you apply rowwise operation with a list column, you don't have to loop
+df <- tibble(var = list(1, 2:3, 4:6))
+df |> 
+  mutate(lngth = map_int(var, length))
+df |> 
+  rowwise() |> 
+  mutate(lngth = length(var))
+
+d |> 
+  nest_by(content) |> 
+  mutate(m1 = list(lm(Theta ~ primary, data = data)),
+         m2 = list(lm(Theta ~ primary + secondary, data = data)),
+         m3 = list(lm(Theta ~ primary * secondary, data = data)))
+
+```
+
+```{r}
+# extract all r-squared
+r2 <- mods |> 
+  pivot_longer(
+    m1:m3,
+    names_to = "model",
+    values_to = "output"
+  ) |> 
+  mutate(r2 = map_dbl(output, ~ summary(.x)$r.squared))
+
+# tidy the coefficients
+tidied <- mods |> 
+  pivot_longer(
+    m1:m3,
+    names_to = "model",
+    values_to = "output"
+  ) |> 
+  mutate(tidied = map(output, tidy)) |> 
+  select(content, model, tidied) |> 
+  unnest(tidied)
+
+to_plot <- names(coef(mods$m1[[1]]))  
+  
+  
+```
+
