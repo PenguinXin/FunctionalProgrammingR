@@ -1336,3 +1336,132 @@ full_conditions |>
 
 ```
 
+# walk
+
+```{r}
+library(tidyverse)
+library(english)
+library(fs)
+library(here)
+library(glue)
+library(broom)
+library(fivethirtyeight)
+
+# save plots
+
+dir_create(here("plots", "pulitzers"))
+newspapers <- str_replace_all(
+  tolower(p$newspaper),
+  " ",
+  "-"
+)
+paths <- here(
+  "plots",
+  "pulitzers",
+  glue("{newspapers}.png")
+)
+
+walk2(paths, p$plot, ggsave, width = 6.5, height = 9)
+```
+
+# modify()
+modify() always returns the same type as the input type
+```{r}
+modify(mtcars, ~ as.numeric(scale(.x)))
+map_dfr(mtcars, ~ as.numeric(scale(.x)))
+
+modify2(LETTERS[1:3], letters[1:3], paste0)
+map2_chr(LETTERS[1:3], letters[1:3], paste0)
+```
+
+# safely()
+makes your iterations safer
+```{r}
+by_cyl <- mpg |> 
+  group_by(cyl) |> 
+  nest()
+by_cyl |> 
+  mutate(mod = map(data, ~ lm(hwy ~ displ + drv, data = .x)))
+
+# define safe function
+safe_lm <- safely(lm)
+
+# loop the safe function
+safe_models <- by_cyl |> 
+  mutate(safe_mod = map(data, ~ safe_lm(hwy ~ displ + drv, data = .x)))
+
+# create a new variable to filter for results with errors
+safe_models |> 
+  mutate(error = map_lgl(safe_mod, ~!is.null(.x$error))) |> 
+  # inspect the data that have the error message
+  filter(isTRUE(error)) |> 
+  select(cyl, data) |> 
+  unnest(data)
+
+# pull results that worked
+safe_models |> 
+  mutate(results = map(safe_mod, "result"),
+         tidied = map(results, tidy)) |> 
+  select(cyl, tidied) |> 
+  unnest(tidied)
+```
+
+Use safely in web scraping because URLs don't always work
+```{r}
+library(rvest)
+links <- list(
+  "https://en.wikipedia.org/wiki/FC_Barcelona",
+  "https://nosuchpage",
+  "https://en.wikipedia.org/wiki/Rome"
+)
+
+pages <- map(links, ~{
+  Sys.sleep(0.1)
+  read_html(.x)
+})
+
+safe_read_html <- safely(read_html)
+
+pages <- map(links, ~{
+  Sys.sleep(0.1)
+  safe_read_html(.x)
+})
+
+# for non-results, we want to double check the pages where we got no results
+errors <- map_lgl(pages, ~ !is.null(.x$error))
+links[errors]
+```
+
+# reduce()
+When you use reduce(), you will always have the result of length one
+```{r}
+l <- list(
+  c(1, 3),
+  c(1, 5, 7, 9),
+  3,
+  c(4, 8, 12, 2)
+)
+
+reduce(l, sum)
+map(l, sum)
+
+# the use case of reduce()
+l_df <- list(
+  tibble(id = 1:3, score = rnorm(3)),
+  tibble(id = 1:5, treatment = rbinom(5, 1, .5)),
+  tibble(id = c(1, 3, 5, 7), other_thing = rnorm(4))
+)
+
+# apply the join function on all three tibbles in the list
+reduce(l_df, full_join)
+
+# another example to use reduce and bind_rows
+l_df2 <- list(
+  tibble(id = 1:3, scid = 1, score = rnorm(3)),
+  tibble(id = 1:5, scid = 2, score = rnorm(5)),
+  tibble(id = c(1, 3, 5, 7), scid = 3, score = rnorm(4))
+)
+
+reduce(l_df2, bind_rows)
+```
+
