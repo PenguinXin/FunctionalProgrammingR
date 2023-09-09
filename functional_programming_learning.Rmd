@@ -1515,3 +1515,237 @@ summarize_df <- function(df) {
 summarize_df(airquality)
 ```
 
+```{r}
+# pull out specific coefficients
+mods <- mtcars |> 
+  group_by(cyl) |> 
+  nest() |> 
+  mutate(
+    model = map(
+      data, ~ lm(mpg ~ disp + hp + drat, data = .x)
+    )
+  )
+# pull just the first model
+m <- mods$model[[1]]
+coef(m)
+
+coef(m)["disp"]
+
+pull_coef <- function(model, coef_name){
+  coef(model)[coef_name]
+}
+
+mods %>%
+    mutate(intercept = map_dbl(model, pull_coef, "(Intercept)"),
+           disp      = map_dbl(model, pull_coef, "disp"),
+           hp        = map_dbl(model, pull_coef, "hp"),
+           drat      = map_dbl(model, pull_coef, "drat"))
+
+# make some default
+pull_coef <- function(model, coef_name = "(Intercept)"){
+  coef(model)[coef_name]
+}
+
+mods |> 
+  mutate(intercept = map_dbl(model, pull_coef))
+
+# return all coefficients
+# check the coefficient names of one model
+names(coef(m))
+# pull them in a data frame
+tibble(term = names(coef(m)),
+       coefficient = coef(m))
+
+
+pull_all_coefficient <- function(model){
+  tibble(term = names(coef(model)),
+         coefficient = coef(model))
+}
+
+
+mods |> 
+  mutate(coefs = map(model, pull_all_coefficient)) |> 
+  select(cyl, coefs) |> 
+  unnest(coefs)
+
+## another example
+# rescale each column to 0/1 (min is 0 and max is 1)
+set.seed(42)
+df <- tibble::tibble(
+  a = rnorm(10, 100, 150),
+  b = rnorm(10, 100, 150),
+  c = rnorm(10, 100, 150),
+  d = rnorm(10, 100, 150)
+)
+
+# subtract the min value from each observation, dividing that
+# by the difference between the min/max value
+
+# for example,
+tibble(v1 = c(3, 4, 5),
+       numerator = v1 - 3,
+       denominator = 5 - 3,
+       scaled = numerator / denominator)
+
+# for one column
+df |> 
+  mutate(
+    a = (a - min(a, na.rm = TRUE)) /
+      (max(a, na.rm = TRUE) - min(a, na.rm = TRUE))
+  )
+
+# if we don't want to write a function
+map_df(df, ~ (.x - min(.x, na.rm = TRUE)) /
+         (max(.x, na.rm = TRUE) - min(.x, na.rm = TRUE)))
+
+# write a function
+rescale_function <- function(col){
+  (col - min(col, na.rm = TRUE)) /
+    (max(col, na.rm = TRUE) - min(col, na.rm = TRUE))
+}
+
+# make it easy to read
+rescale_function <- function(col){
+  z <- na.omit(col)
+  min_z <- min(z)
+  max_z <- max(z)
+  
+  (z - min_z) / (max_z - min_z)
+}
+
+df |> 
+  map_df(rescale_function)
+
+# add conditions to let a function behave differently depending on the input
+
+# calculate mean of all numeric columns
+mean2 <- function(x, ...) {
+  if(is.numeric(x)) {
+    out <- mean(x, ...)
+  } else {
+    return()
+  }
+  out
+}
+# calculate all means
+means_mpg <- map(mpg, mean2)
+# drop nulls
+is_null <- map_lgl(means_mpg, is.null)
+means_mpg[!is_null]
+
+as.data.frame(means_mpg[!is_null])
+
+get_numeric_mean <- function(df, ...) {
+  means_df <- map(df, mean2, ...)
+  is_null <- map_lgl(means_df, is.null)
+  as.data.frame(means_df[!is_null])
+}
+
+get_numeric_mean(airquality, na.rm = TRUE)
+```
+
+# purity
+```{r}
+# returns the total number of instances where the value is NA for both vectors
+df <- tibble(
+  a = c(1, NA, NA, 3, 3, 9, NA),
+b = c(NA, 3, NA, 4, NA, NA, NA)
+)
+
+df |> 
+  rowwise() |> 
+  mutate(both_null = ifelse(is.na(a)&is.na(b), TRUE, FALSE)) |> 
+  count(both_null) |> 
+  filter(both_null == TRUE)
+
+is.na(a)
+is.na(b)
+
+sum(is.na(a) & is.na(b))
+
+both_na <- function(x, y) {
+  sum(is.na(x) & is.na(y))
+}
+
+# check length, stop the function if the length condition has not been met
+both_na <- function(x, y) {
+  if(length(x) != length(y)) {
+    stop("The lengths for the two vectors are not the same.")
+  }
+  sum(is.na(x) & is.na(y))
+}
+
+both_na(a, c(b, b))
+
+# more meaningful error message?
+# state the length of each
+both_na <- function(x, y) {
+  if(length(x) != length(y)) {
+    v_lngths <- paste0("x = ", length(x),
+                       ", y = ", length(y))
+    stop("Vectors are of different lengths:", v_lngths)
+  }
+  sum(is.na(x) & is.na(y))
+}
+
+# we don't need echo the function; set call. = FALSE
+# we can also state the lengths on new lines
+both_na <- function(x, y) {
+  if(length(x) != length(y)) {
+    v_lngths <- paste0("x = ", length(x),
+                       ", y = ", length(y))
+    stop("Vectors are of different lengths:\n", 
+         v_lngths,
+         call. = FALSE)
+  }
+  sum(is.na(x) & is.na(y))
+}
+
+# for quick checks, use stopifnot
+z_score <- function(x) {
+  stopifnot(is.numeric(x))
+  x <- x[!is.na(x)]
+  (x - mean(x)) / sd(x)
+}
+
+z_score(c("a", "b", "c"))
+
+# if you want to embed a warning, just swap out stop() for warning()
+both_na <- function(x, y) {
+  if(length(x) != length(y)) {
+    v_lngths <- paste0("x = ", length(x),
+                       ", y = ", length(y))
+    warning("Vectors are of different lengths:", v_lngths)
+  }
+  sum(is.na(x) & is.na(y))
+}
+
+
+```
+
+```{r}
+# let's build out a warning if the vectors are different lengths, but they are recyclable
+# %% modula operator
+
+## one approach; note the double condition
+both_na <- function(x, y) {
+  if(length(x) != length(y)) {
+    lx <- length(x)
+    ly <- length(y)
+    
+    v_lngths <- paste0("x = ", ly, ", y = ", ly)
+    
+    if(lx %% ly == 0 | ly %% lx == 0){
+      warning("Vectors were recycled (", v_lngths, ")")
+    }
+    else {
+      stop("Vectors are of different lengths and are not recyclable:",
+           v_lngths)
+    }
+  }
+  sum(is.na(x) & is.na(y))
+}
+
+both_na(a, c(b, b))
+```
+
